@@ -24,17 +24,21 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.MonetizationOn
+import androidx.compose.material.icons.outlined.Store
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,21 +63,59 @@ fun SettingsScreen(
     onThemeChange: (Boolean) -> Unit,
     currencyCode: String,
     currencySymbol: String,
-    onCurrencyChange: (String, String) -> Unit
+    onCurrencyChange: (String, String) -> Unit,
+    storeName: String,
+    onStoreNameChange: (String) -> Unit
 ) {
-    val context    = LocalContext.current
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val (showCurrencySheet, setShowCurrencySheet) = remember { mutableStateOf(false) }
+    val (showStoreDialog, setShowStoreDialog) = remember { mutableStateOf(false) }
+    val (tempStoreName, setTempStoreName) = remember { mutableStateOf(storeName) }
 
     val currencies = listOf(
-        Triple("ZMW", "K",   "Zambian Kwacha"),
-        Triple("USD", "$",   "US Dollar"),
-        Triple("EUR", "€",   "Euro"),
-        Triple("GBP", "£",   "British Pound"),
-        Triple("ZAR", "R",   "South African Rand"),
-        Triple("NGN", "₦",   "Nigerian Naira"),
+        Triple("ZMW", "K", "Zambian Kwacha"),
+        Triple("USD", "$", "US Dollar"),
+        Triple("EUR", "€", "Euro"),
+        Triple("GBP", "£", "British Pound"),
+        Triple("ZAR", "R", "South African Rand"),
+        Triple("NGN", "₦", "Nigerian Naira"),
         Triple("KES", "KSh", "Kenyan Shilling")
     )
+
+    // ── Store Name Dialog ──────────────────────────────────────────────────
+    if (showStoreDialog) {
+        AlertDialog(
+            onDismissRequest = { setShowStoreDialog(false) },
+            title = {
+                Text(
+                    "Edit Store Name",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = tempStoreName,
+                    onValueChange = setTempStoreName,
+                    label = { Text("Store Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val newName = tempStoreName.trim().ifEmpty { "My Store" }
+                    onStoreNameChange(newName)
+                    setShowStoreDialog(false)
+                    Toast.makeText(context, "Store name updated", Toast.LENGTH_SHORT).show()
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { setShowStoreDialog(false) }) { Text("Cancel") }
+            }
+        )
+    }
 
     // ── Currency bottom sheet ──────────────────────────────────────────────
     if (showCurrencySheet) {
@@ -96,7 +138,8 @@ fun SettingsScreen(
                             .clickable {
                                 onCurrencyChange(code, symbol)
                                 setShowCurrencySheet(false)
-                                Toast.makeText(context, "Currency set to $code", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Currency set to $code", Toast.LENGTH_SHORT)
+                                    .show()
                             }
                             .padding(horizontal = 20.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -121,7 +164,10 @@ fun SettingsScreen(
                             ) {
                                 Text(
                                     "Active",
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(
+                                        horizontal = 10.dp,
+                                        vertical = 4.dp
+                                    ),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -247,6 +293,52 @@ fun SettingsScreen(
                     ) {
                         Text(
                             "Change",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // ── Store Profile ───────────────────────────────────────────────
+            SettingsSectionLabel("Store Profile")
+            SettingsCard(
+                modifier = Modifier.clickable {
+                    setTempStoreName(storeName)
+                    setShowStoreDialog(true)
+                }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsIconBox(icon = Icons.Outlined.Store)
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Store Name",
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            storeName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            "Edit",
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
@@ -441,11 +533,13 @@ private fun SocialLinkRow(
 fun SettingsScreenPreview() {
     PointOfSaleTheme {
         SettingsScreen(
-            isDarkTheme    = false,
-            onThemeChange  = {},
-            currencyCode   = "ZMW",
+            isDarkTheme = false,
+            onThemeChange = {},
+            currencyCode = "ZMW",
             currencySymbol = "K",
-            onCurrencyChange = { _, _ -> }
+            onCurrencyChange = { _, _ -> },
+            storeName = "Emelio's Store",
+            onStoreNameChange = {}
         )
     }
 }

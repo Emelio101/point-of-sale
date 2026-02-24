@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         return " ".repeat(pad) + text
     }
 
-    private val divider get() = "─".repeat(lineWidth)
+    private val divider get() = "-".repeat(lineWidth)
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 )
             }
 
-            val (storeName, _) = remember {
+            val (storeName, setStoreName) = remember {
                 mutableStateOf(sharedPrefs.getString("store_name", "My Store") ?: "My Store")
             }
 
@@ -121,6 +121,10 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                         sharedPrefs.edit { putBoolean("dark_mode", it) }
                     },
                     storeName = storeName,
+                    onStoreNameChange = { newName ->
+                        setStoreName(newName)
+                        sharedPrefs.edit { putString("store_name", newName) }
+                    },
                     currencySymbol = currencySymbol,
                     currencyCode = currencyCode,
                     onCurrencyChange = { code, symbol ->
@@ -267,15 +271,16 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             val out = bluetoothSocket!!.outputStream
 
             // ESC/POS control bytes
+            val disableChinese = byteArrayOf(0x1C, 0x2E)
             val init = byteArrayOf(0x1B, 0x40)
             val center = byteArrayOf(0x1B, 0x61, 0x01)
             val left = byteArrayOf(0x1B, 0x61, 0x00)
             val boldOn = byteArrayOf(0x1B, 0x45, 0x01)
             val boldOff = byteArrayOf(0x1B, 0x45, 0x00)
             val lf = byteArrayOf(0x0A)
-            val bigOn = byteArrayOf(0x1D, 0x21, 0x11) // double width + height
+            val bigOn = byteArrayOf(0x1D, 0x21, 0x11)
             val bigOff = byteArrayOf(0x1D, 0x21, 0x00)
-            val cut = byteArrayOf(0x1D, 0x56, 0x42, 0x03) // partial cut
+            val cut = byteArrayOf(0x1D, 0x56, 0x42, 0x03)
 
             fun w(s: String) = out.write(s.toByteArray(Charsets.UTF_8))
             fun wl(s: String = "") {
@@ -283,6 +288,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             }
 
             out.write(init)
+            out.write(disableChinese)
 
             // ── Logo ──────────────────────────────────────────────────────
             out.write(center)
@@ -304,34 +310,34 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             wl(storeName.uppercase())
             out.write(bigOff)
             out.write(boldOff)
-            wl(centered(deviceName))
-            wl(centered("v${BuildConfig.VERSION_NAME}"))
+            wl(deviceName)
+            wl("v${BuildConfig.VERSION_NAME}")
             out.write(lf)
 
             // ── Receipt body (job-specific) ───────────────────────────────
             when (job) {
                 PrintJob.STANDARD -> {
                     out.write(center)
-                    wl(centered("123 Main Street"))
-                    wl(centered("Lusaka, Zambia"))
+                    wl("123 Main Street")
+                    wl("Lusaka, Zambia")
                     out.write(lf)
                     out.write(left)
                     wl(centered(now()))
                     wl(divider)
-                    wl(itemLine("1× Coffee", "${currencySymbol}35.00"))
-                    wl(itemLine("2× Croissant", "${currencySymbol}100.00"))
+                    wl(itemLine("1x Coffee", "${currencySymbol}35.00"))
+                    wl(itemLine("2x Croissant", "${currencySymbol}100.00"))
                     wl(divider)
                     out.write(boldOn)
                     wl(itemLine("TOTAL", "${currencySymbol}135.00"))
                     out.write(boldOff)
                     out.write(lf)
                     out.write(center)
-                    wl(centered("ITEMS: 3"))
+                    wl("ITEMS: 3")
                     out.write(lf)
                     out.write(boldOn)
-                    wl(centered("Thank you for your business!"))
+                    wl("Thank you for your business!")
                     out.write(boldOff)
-                    wl(centered("** TEST RECEIPT **"))
+                    wl("** TEST RECEIPT **")
                 }
 
                 PrintJob.NFC -> {
@@ -368,7 +374,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                         val itemTotal = item.product.price * item.quantity
                         wl(
                             itemLine(
-                                "${item.quantity}× ${item.product.name}",
+                                "${item.quantity}x ${item.product.name}",
                                 "$currencySymbol%.2f".format(itemTotal)
                             )
                         )
@@ -379,12 +385,12 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                     out.write(boldOff)
                     out.write(lf)
                     out.write(center)
-                    wl(centered("ITEMS: ${cartItems.sumOf { it.quantity }}"))
+                    wl("ITEMS: ${cartItems.sumOf { it.quantity }}")
                     out.write(lf)
                     out.write(boldOn)
-                    wl(centered("Thank you for your business!"))
+                    wl("Thank you for your business!")
                     out.write(boldOff)
-                    wl(centered("Please come again ✦"))
+                    wl("Please come again ✦")
                 }
             }
 

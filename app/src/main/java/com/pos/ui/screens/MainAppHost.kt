@@ -9,8 +9,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.ShoppingCart
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -24,6 +32,7 @@ fun MainAppHost(
     isDarkTheme: Boolean,
     onThemeChange: (Boolean) -> Unit,
     storeName: String,
+    onStoreNameChange: (String) -> Unit,
     currencySymbol: String,
     currencyCode: String,
     onCurrencyChange: (String, String) -> Unit,
@@ -48,9 +57,9 @@ fun MainAppHost(
                     icon = { Icon(Icons.Outlined.Build, contentDescription = "Hardware") },
                     label = { Text("Hardware") },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor   = MaterialTheme.colorScheme.primary,
-                        selectedTextColor   = MaterialTheme.colorScheme.primary,
-                        indicatorColor      = MaterialTheme.colorScheme.primaryContainer
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
                     )
                 )
                 NavigationBarItem(
@@ -59,9 +68,9 @@ fun MainAppHost(
                     icon = { Icon(Icons.Outlined.ShoppingCart, contentDescription = "Checkout") },
                     label = { Text("Checkout") },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor   = MaterialTheme.colorScheme.primary,
-                        selectedTextColor   = MaterialTheme.colorScheme.primary,
-                        indicatorColor      = MaterialTheme.colorScheme.primaryContainer
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
                     )
                 )
                 NavigationBarItem(
@@ -70,9 +79,9 @@ fun MainAppHost(
                     icon = { Icon(Icons.Outlined.Settings, contentDescription = "Settings") },
                     label = { Text("Settings") },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor   = MaterialTheme.colorScheme.primary,
-                        selectedTextColor   = MaterialTheme.colorScheme.primary,
-                        indicatorColor      = MaterialTheme.colorScheme.primaryContainer
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
                     )
                 )
             }
@@ -90,12 +99,14 @@ fun MainAppHost(
                     { job -> executePrint(job, emptyList(), 0.0) },
                     onRefreshNfc
                 )
+
                 AppScreen.CHECKOUT -> CheckoutScreen(
                     currencySymbol, storeName, deviceName
                 ) { cart, total -> executePrint(PrintJob.CHECKOUT, cart, total) }
 
                 AppScreen.SETTINGS -> SettingsScreen(
-                    isDarkTheme, onThemeChange, currencyCode, currencySymbol, onCurrencyChange
+                    isDarkTheme, onThemeChange, currencyCode, currencySymbol, onCurrencyChange,
+                    storeName, onStoreNameChange
                 )
             }
         }
@@ -120,7 +131,8 @@ fun MainAppHostPreview() {
             deviceName = "Emelio E101",
             connectToDevice = {},
             executePrint = { _, _, _ -> },
-            onRefreshNfc = {}
+            onRefreshNfc = {},
+            onStoreNameChange = {}
         )
     }
 }
