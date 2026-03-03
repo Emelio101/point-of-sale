@@ -71,8 +71,12 @@ fun DiagnosticScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (bluetoothAdapter?.isEnabled == true) {
-            setPairedDevices(bluetoothAdapter.bondedDevices.toList())
+        try {
+            if (bluetoothAdapter?.isEnabled == true) {
+                setPairedDevices(bluetoothAdapter.bondedDevices.toList())
+            }
+        } catch (_: SecurityException) {
+            // Permission not granted yet (First launch). Will load on refresh.
         }
     }
 
@@ -109,8 +113,13 @@ fun DiagnosticScreen(
                 FilledIconButton(
                     onClick = {
                         onRefresh()
-                        if (bluetoothAdapter?.isEnabled == true)
-                            setPairedDevices(bluetoothAdapter.bondedDevices.toList())
+                        try {
+                            if (bluetoothAdapter?.isEnabled == true) {
+                                setPairedDevices(bluetoothAdapter.bondedDevices.toList())
+                            }
+                        } catch (_: SecurityException) {
+                            // If they denied the permission, catching this prevents a crash
+                        }
                     },
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,

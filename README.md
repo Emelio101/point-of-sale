@@ -6,9 +6,25 @@
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-1.7-blue.svg)](https://developer.android.com/jetpack/compose)
 [![Min SDK](https://img.shields.io/badge/minSdk-26-orange.svg)](https://developer.android.com)
 
-A modern, lightweight Android POS (Point of Sale) application built with Jetpack Compose. Supports
-Bluetooth thermal receipt printing, NFC card scanning, a full store checkout flow, and customizable
-settings — all in a polished, responsive UI.
+A modern, lightweight Android POS (Point of Sale) application built with Jetpack Compose. This app
+serves as a technical portfolio piece demonstrating deep Android hardware integration—specifically *
+*ESC/POS Bluetooth thermal printing** and **low-level NFC EMV (Bank Card) APDU communication**.
+
+---
+
+## 🔒 Security & Portfolio Disclaimer
+
+**This application is open-source for educational and portfolio purposes.** It is safe to be public
+because it relies strictly on global, public communication standards (NFC Forum, EMVCo APDU
+commands, ESC/POS) and factory default fallback keys. It contains no proprietary corporate keys or
+hardcoded user data.
+
+**⚠️ Not for Production (PCI-DSS Compliance):**
+While this app successfully communicates with physical Visa and Mastercard chips to read public
+data (like the masked PAN), it stores this data temporarily in standard device memory. In a
+real-world, PCI-compliant POS terminal, card numbers must be hardware-encrypted (e.g., using DUKPT)
+at the NFC controller level before the Android OS even sees them. This app is designed to showcase
+Kotlin hardware communication skills, not to process actual financial transactions.
 
 ---
 
@@ -45,6 +61,15 @@ Want to test the app without building from source? Download the demo APK directl
 - Cart with inline **+/–** quantity controls and swipe-to-remove
 - Receipt preview dialog before printing
 - Supports multiple currencies with instant symbol switching
+
+### 📡 NFC EMV & NDEF Scanner
+
+- **EMV Bank Cards (IsoDep):** Transmits standard APDU commands (`Select PPSE`, `Select AID`) to
+  wake up Visa and Mastercard chips, iterates through internal SFIs/Records, and extracts public
+  BER-TLV tags (like the Primary Account Number).
+- **Mifare Classic & NDEF:** Automatically reads standard NDEF payloads. Includes a custom fallback
+  scanner that brute-forces common sector keys (`Default`, `NFC Forum`, `MAD`) to read raw blocks on
+  heavily secured POS terminals that lack NXP auto-translation firmware.
 
 ### 🖨️ Bluetooth Printing
 
@@ -86,7 +111,7 @@ Want to test the app without building from source? Download the demo APK directl
 | UI           | Jetpack Compose (Material 3)                  |
 | Architecture | Single-Activity, Composable screens           |
 | Printing     | ESC/POS over Bluetooth RFCOMM                 |
-| NFC          | `NfcAdapter.ReaderCallback` (NFC-A / NFC-B)   |
+| NFC          | `NfcAdapter.ReaderCallback` (APDU (IsoDep)    |
 | Theme        | Dynamic color + custom amber/charcoal palette |
 | Persistence  | `SharedPreferences`                           |
 

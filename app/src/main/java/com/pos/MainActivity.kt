@@ -10,6 +10,7 @@ import android.graphics.BitmapFactory
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
+import android.nfc.tech.MifareClassic
 import android.nfc.tech.Ndef
 import android.os.Build
 import android.os.Bundle
@@ -195,33 +196,262 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     override fun onTagDiscovered(nfcTag: Tag?) {
         if (nfcTag == null) return
+        val isoDep = IsoDep.get(nfcTag)
+
         try {
             val uidHex = nfcTag.id.joinToString("") { "%02X".format(it) }
             val techList = nfcTag.techList.joinToString(", ") { it.substringAfterLast('.') }
-            var extraInfo = "No payload detected"
 
-            val ndef = Ndef.get(nfcTag)
-            val isoDep = IsoDep.get(nfcTag)
+            // If it's an ISO-DEP, treat it as a potential EMV Bank Card
+            if (isoDep != null) {
+                isoDep.connect()
+                isoDep.timeout = 5000 // Increase timeout for slower cards
 
-            if (ndef != null) {
-                val msg = ndef.cachedNdefMessage
-                if (msg != null && msg.records.isNotEmpty()) {
-                    val payload = msg.records[0].payload
-                    extraInfo = "NDEF: ${String(payload, 3, payload.size - 3)}"
+                // 1. Select PPSE (Payment System Environment)
+                val apduSelectPPSE =
+                    hexStringToByteArray("00A404000E325041592E5359532E444446303100")
+                isoDep.transceive(apduSelectPPSE)
+
+                // Common AIDs: Visa and Mastercard
+                val aids = mapOf(
+                    "VISA" to hexStringToByteArray("00A4040007A000000003101000"),
+                    "MASTERCARD" to hexStringToByteArray("00A4040007A000000004101000")
+                )
+
+                var pan = "Unknown"
+                var name = "Not found (Encrypted or Omitted)"
+                var cardType = "Unknown Bank Card"
+                var readSuccess = false
+
+                // 2. Try selecting the payment applications
+                for ((brand, apduAID) in aids) {
+                    val aidResponse = isoDep.transceive(apduAID)
+
+                    // If the card responds with 90 00 (Success)
+                    if (aidResponse.size >= 2 &&
+                        aidResponse[aidResponse.size - 2] == 0x90.toByte() &&
+                        aidResponse[aidResponse.size - 1] == 0x00.toByte()
+                    ) {
+                        cardType = brand
+                        readSuccess = true
+
+                        // 3. Read Records (Brute force SFI 1-10, Records 1-10)
+                        for (sfi in 1..10) {
+                            for (record in 1..10) {
+                                val p2 = ((sfi shl 3) or 4).toByte()
+                                val readRecord =
+                                    byteArrayOf(0x00, 0xB2.toByte(), record.toByte(), p2, 0x00)
+                                val res = isoDep.transceive(readRecord)
+
+                                if (res.size > 2 && res[res.size - 2] == 0x90.toByte()) {
+                                    val hexRes = res.joinToString("") { "%02X".format(it) }
+
+                                    // Parse PAN (Tag 5A)
+                                    if (hexRes.contains("5A08")) {
+                                        val index = hexRes.indexOf("5A08")
+                                        pan =
+                                            hexRes.substring(index + 4, index + 20).replace("F", "")
+                                    }
+                                    // Parse Track 2 Equivalent Data (Tag 57) - often contains PAN
+                                    else if (hexRes.contains("57")) {
+                                        val index = hexRes.indexOf("57")
+                                        val endIdx = hexRes.indexOf("D", index + 4)
+                                        if (endIdx > -1) {
+                                            pan = hexRes.substring(index + 4, endIdx)
+                                        }
+                                    }
+
+                                    // Parse Cardholder Name (Tag 5F20)
+                                    if (hexRes.contains("5F20")) {
+                                        val index = hexRes.indexOf("5F20")
+                                        val length =
+                                            hexRes.substring(index + 4, index + 6).toInt(16)
+                                        val nameHex =
+                                            hexRes.substring(index + 6, index + 6 + (length * 2))
+                                        name = hexToAscii(nameHex)
+                                    }
+                                }
+                            }
+                        }
+                        break // We found the application, no need to check other AIDs
+                    }
                 }
-            } else if (isoDep != null) {
-                extraInfo = "EMV Bank Card Detected\n(Data Encrypted)"
-            }
 
-            runOnUiThread {
-                nfcUidState.value = uidHex
-                nfcTechState.value = techList
-                nfcExtraDataState.value = extraInfo
-                Toast.makeText(this, "Card Read Successfully!", Toast.LENGTH_SHORT).show()
+                isoDep.close()
+
+                if (readSuccess) {
+                    val formattedInfo =
+                        "Brand: $cardType\nName: $name\nCard Number: ${formatPan(pan)}"
+                    Log.d(
+                        logTag,
+                        "Bank Card Scanned:\nID: $uidHex\n$formattedInfo\nTECH: $techList"
+                    )
+
+                    runOnUiThread {
+                        nfcUidState.value = uidHex
+                        nfcTechState.value = techList
+                        nfcExtraDataState.value = formattedInfo
+                        Toast.makeText(this, "$cardType Read!", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    // It's an IsoDep tag, but neither Visa nor MC responded
+                    runOnUiThread {
+                        nfcUidState.value = uidHex
+                        nfcTechState.value = techList
+                        nfcExtraDataState.value = "Unrecognized Bank Card (Not Visa/MC)"
+                        Toast.makeText(this, "Unknown EMV Card", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+            } else {
+                // Fallback for non-payment tags (NDEF, Mifare)
+                handleStandardTag(nfcTag, uidHex, techList)
             }
         } catch (e: Exception) {
-            Log.e(logTag, "Error reading NFC", e)
+            Log.e(logTag, "Error reading NFC/EMV", e)
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "Read Error: Card moved too fast?",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
+    }
+
+    // --- Add this helper function below your other helpers ---
+    private fun hexStringToByteArray(s: String): ByteArray {
+        val len = s.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] =
+                ((Character.digit(s[i], 16) shl 4) + Character.digit(s[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
+    }
+
+    private fun handleStandardTag(nfcTag: Tag, uidHex: String, techList: String) {
+        var extraInfo = "No payload detected"
+
+        val ndef = Ndef.get(nfcTag)
+        if (ndef != null) {
+            try {
+                ndef.connect()
+                val msg = ndef.cachedNdefMessage ?: ndef.ndefMessage
+                if (msg != null && msg.records.isNotEmpty()) {
+                    val payload = msg.records[0].payload
+                    val text = if (payload.size > 3) String(payload, 3, payload.size - 3) else ""
+                    extraInfo = "NDEF Text: $text"
+                }
+                ndef.close()
+            } catch (e: Exception) {
+                extraInfo = "NDEF read failed"
+                Log.e(logTag, "NDEF Error", e)
+            }
+        } else if (techList.contains("MifareClassic")) {
+            val mifare = MifareClassic.get(nfcTag)
+            if (mifare != null) {
+                try {
+                    mifare.connect()
+                    val sb = StringBuilder()
+
+                    // A dictionary of the most common Mifare/NDEF keys
+                    val keysToTry = listOf(
+                        MifareClassic.KEY_DEFAULT,       // FF FF FF FF FF FF
+                        MifareClassic.KEY_NFC_FORUM,     // D3 F7 D3 F7 D3 F7
+                        byteArrayOf(
+                            0xA0.toByte(),
+                            0xA1.toByte(),
+                            0xA2.toByte(),
+                            0xA3.toByte(),
+                            0xA4.toByte(),
+                            0xA5.toByte()
+                        ), // MAD Key
+                        byteArrayOf(0x00, 0x00, 0x00, 0x00, 0x00, 0x00) // All Zeros
+                    )
+
+                    val sectorCount = mifare.sectorCount.coerceAtMost(4)
+
+                    for (sector in 0 until sectorCount) {
+                        var auth = false
+
+                        // Try every key in our dictionary
+                        for (key in keysToTry) {
+                            if (mifare.authenticateSectorWithKeyA(sector, key)) {
+                                auth = true
+                                break
+                            }
+                        }
+
+                        if (auth) {
+                            val blockIndex = mifare.sectorToBlock(sector)
+                            val blocksInSector = mifare.getBlockCountInSector(sector)
+
+                            for (block in 0 until blocksInSector) {
+                                if (block == blocksInSector - 1) continue // Skip trailer block
+
+                                val data = mifare.readBlock(blockIndex + block)
+                                val ascii = data.map { it.toInt().toChar() }
+                                    .filter { it in ' '..'~' }
+                                    .joinToString("")
+
+                                if (ascii.isNotBlank()) {
+                                    sb.append(ascii)
+                                }
+                            }
+                        }
+                    }
+
+                    if (sb.isNotEmpty()) {
+                        val rawText = sb.toString()
+                        val cleanText =
+                            Regex("[a-zA-Z0-9]{5,}").find(rawText)?.value ?: rawText.take(50)
+                        extraInfo = "Raw Read: $cleanText"
+                    } else {
+                        extraInfo = "Raw Read: Data encrypted (Auth Failed)"
+                    }
+
+                    mifare.close()
+                } catch (e: Exception) {
+                    extraInfo = "Raw Mifare read failed"
+                    Log.e(logTag, "Mifare Error", e)
+                }
+            }
+        }
+
+        Log.d(logTag, "Standard NFC Scanned: ID: $uidHex, TECH: $techList, INFO: $extraInfo")
+
+        runOnUiThread {
+            nfcUidState.value = uidHex
+            nfcTechState.value = techList
+            nfcExtraDataState.value = extraInfo
+            Toast.makeText(this, "NFC Tag Read!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun formatPan(pan: String): String {
+        if (pan == "Unknown" || pan.length < 12) return pan
+        // If it's a 16 digit card
+        if (pan.length >= 16) {
+            return pan.substring(0, 4) + " **** **** " + pan.substring(pan.length - 4)
+        }
+        // Generic masking if length is weird
+        return "****" + pan.takeLast(4)
+    }
+
+    private fun hexToAscii(hexStr: String): String {
+        val output = StringBuilder()
+        try {
+            for (i in 0 until hexStr.length step 2) {
+                val str = hexStr.substring(i, i + 2)
+                output.append(str.toInt(16).toChar())
+            }
+        } catch (_: Exception) {
+            return "Parse Error"
+        }
+        return output.toString().trim()
     }
 
     private val requestPermissionLauncher =
